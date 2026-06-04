@@ -1,1 +1,11 @@
+venv/
 .env
+
+fresh_leads.csv
+sent_leads.csv
+replied_leads.csv
+
+daily_counts.json
+
+__pycache__/
+*.pyc
