@@ -2,10 +2,21 @@ venv/
 .env
 
 fresh_leads.csv
+clean_leads.csv
+verified_leads.csv
 sent_leads.csv
+waiting_followup.csv
 replied_leads.csv
+dead_leads.csv
+failed_leads.csv
+rejected_leads.csv
 
 daily_counts.json
+.locks/
 
 __pycache__/
 *.pyc
+archive/
+generated_overlays/
+media/
+outputs/

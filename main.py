@@ -1,199 +1,200 @@
-import pandas as pd
-import smtplib
-import os
-import time
-import random
-import json
-
-from datetime import datetime
-from dotenv import load_dotenv
-from email.message import EmailMessage
-
-load_dotenv()
-
-# =====================================
-# MAILBOXES
-# =====================================
-
-mailboxes = [
-
-    {
-        "name": "Zoho Main",
-        "email": os.getenv("ZOHO_EMAIL"),
-        "password": os.getenv("ZOHO_PASSWORD"),
-        "smtp": "smtp.zoho.com"
-    },
-
-    {
-        "name": "Infomaniak Main",
-        "email": os.getenv("INFO_EMAIL"),
-        "password": os.getenv("INFO_PASSWORD"),
-        "smtp": "mail.infomaniak.com"
-    },
-
-    {
-        "name": "UIUX",
-        "email": os.getenv("UIUX_EMAIL"),
-        "password": os.getenv("UIUX_PASSWORD"),
-        "smtp": "smtp.zoho.com"
-    },
-
-    {
-        "name": "Commercials",
-        "email": os.getenv("COMMERCIALS_EMAIL"),
-        "password": os.getenv("COMMERCIALS_PASSWORD"),
-        "smtp": "smtp.zoho.com"
-    },
-
-    {
-        "name": "Creative",
-        "email": os.getenv("CREATIVE_EMAIL"),
-        "password": os.getenv("CREATIVE_PASSWORD"),
-        "smtp": "smtp.zoho.com"
-    }
-]
-
-# =====================================
-# SETTINGS
-# =====================================
-
-MAX_PER_MAILBOX = 5
-
-COUNTER_FILE = "daily_counts.json"
-
-# =====================================
-# LOAD COUNTERS
-# =====================================
-
-today = datetime.now().strftime("%Y-%m-%d")
-
-if os.path.exists(COUNTER_FILE):
-
-    with open(COUNTER_FILE, "r") as f:
-        data = json.load(f)
-
-    if data["date"] == today:
-        mailbox_counts = data["counts"]
-
-    else:
-        mailbox_counts = {}
-
-else:
-    mailbox_counts = {}
-
-for mailbox in mailboxes:
-    mailbox_counts.setdefault(mailbox["name"], 0)
-
-# =====================================
-# LOAD LEADS
-# =====================================
-
-leads = pd.read_csv("fresh_leads.csv")
-
-if leads.empty:
-    print("No fresh leads.")
-    exit()
-
-print("\nAurum Studios Outreach Engine Started\n")
-
-sent_emails = []
-
-# =====================================
-# SEND LOOP
-# =====================================
-
-for index, lead in leads.iterrows():
-
-    mailbox = mailboxes[index % len(mailboxes)]
-
-    if mailbox_counts[mailbox["name"]] >= MAX_PER_MAILBOX:
-
-        print(f"{mailbox['name']} daily limit reached.")
-        continue
-
-    try:
-
-        msg = EmailMessage()
-
-        msg["Subject"] = lead["subject_line"]
-        msg["From"] = mailbox["email"]
-        msg["To"] = lead["email"]
-
-        msg.set_content(lead["full_email"])
-
-        with smtplib.SMTP_SSL(mailbox["smtp"], 465) as smtp:
-
-            smtp.login(
-                mailbox["email"],
-                mailbox["password"]
-            )
-
-            smtp.send_message(msg)
-
-        print(
-            f"✓ Sent to {lead['email']} "
-            f"using {mailbox['name']}"
-        )
-
-        mailbox_counts[mailbox["name"]] += 1
-
-        sent_row = pd.DataFrame([{
-
-            "name": lead["name"],
-            "company": lead["company"],
-            "email": lead["email"],
-            "subject_line": lead["subject_line"],
-            "mailbox_used": mailbox["name"],
-            "sent_at": datetime.now(),
-            "status": "sent"
-
-        }])
-
-        sent_row.to_csv(
-            "sent_leads.csv",
-            mode="a",
-            header=not os.path.exists("sent_leads.csv"),
-            index=False
-        )
-
-        sent_emails.append(lead["email"])
-
-    except Exception as e:
-
-        print(f"\nFAILED -> {lead['email']}")
-        print(e)
-        print()
-
-    wait_time = random.randint(45, 90)
-
-    print(f"Waiting {wait_time}s\n")
-
-    time.sleep(wait_time)
-
-# =====================================
-# REMOVE SENT LEADS
-# =====================================
-
-remaining = leads[
-    ~leads["email"].isin(sent_emails)
-]
-
-remaining.to_csv(
-    "fresh_leads.csv",
-    index=False
+from aurum_core import (
+    DEFAULT_COLUMNS,
+    DRY_RUN,
+    FAILED_LEADS_FILE,
+    FRESH_LEADS_FILE,
+    SENT_LEADS_FILE,
+    VERIFIED_LEADS_FILE,
+    WAITING_FOLLOWUP_FILE,
+    append_row,
+    atomic_write_dataframe,
+    file_lock,
+    increment_quota,
+    is_valid_email_format,
+    load_daily_counts,
+    load_mailboxes,
+    now_iso,
+    quota_available,
+    read_csv,
+    remove_emails,
+    save_daily_counts,
+    send_smtp_message,
+    wait_between_sends,
 )
 
-# =====================================
-# SAVE COUNTERS
-# =====================================
+WAITING_COLUMNS = [
+    "name",
+    "company",
+    "email",
+    "website",
+    "subject_line",
+    "full_email",
+    "mailbox_used",
+    "mailbox_email",
+    "sent_at",
+    "followup_count",
+    "last_contacted",
+    "status",
+]
 
-with open(COUNTER_FILE, "w") as f:
+SENT_COLUMNS = [
+    "name",
+    "company",
+    "email",
+    "subject_line",
+    "mailbox_used",
+    "sent_at",
+    "status",
+]
 
-    json.dump({
+FAILED_COLUMNS = [
+    "name",
+    "company",
+    "email",
+    "subject_line",
+    "mailbox_used",
+    "failed_at",
+    "error",
+    "status",
+]
 
-        "date": today,
-        "counts": mailbox_counts
 
-    }, f)
+def lead_source_file():
+    if VERIFIED_LEADS_FILE.exists() and VERIFIED_LEADS_FILE.stat().st_size > 0:
+        return VERIFIED_LEADS_FILE
+    print("verified_leads.csv not found. Falling back to fresh_leads.csv.")
+    return FRESH_LEADS_FILE
 
-print("\nDaily sending completed.")
+
+def load_sendable_leads(path):
+    leads = read_csv(path, columns=DEFAULT_COLUMNS)
+    if leads.empty:
+        return leads
+
+    for column in DEFAULT_COLUMNS:
+        if column not in leads.columns:
+            leads[column] = ""
+        leads[column] = leads[column].astype(str).str.strip()
+
+    if "verification_status" in leads.columns:
+        leads = leads[leads["verification_status"].str.upper() == "VALID"]
+
+    return leads[
+        (leads["email"].map(is_valid_email_format))
+        & (leads["subject_line"] != "")
+        & (leads["full_email"] != "")
+    ]
+
+
+def next_mailbox(mailboxes, counts, start_index):
+    for offset in range(len(mailboxes)):
+        mailbox = mailboxes[(start_index + offset) % len(mailboxes)]
+        if quota_available(counts, mailbox["name"], "new"):
+            return mailbox
+    return None
+
+
+def waiting_row(lead, mailbox):
+    return {
+        "name": lead.get("name", ""),
+        "company": lead.get("company", ""),
+        "email": lead.get("email", ""),
+        "website": lead.get("website", ""),
+        "subject_line": lead.get("subject_line", ""),
+        "full_email": lead.get("full_email", ""),
+        "mailbox_used": mailbox["name"],
+        "mailbox_email": mailbox["email"],
+        "sent_at": now_iso(),
+        "followup_count": 0,
+        "last_contacted": now_iso(),
+        "status": "waiting_followup",
+    }
+
+
+def main():
+    with file_lock("main"):
+        source_file = lead_source_file()
+        mailboxes = load_mailboxes()
+        counts = load_daily_counts()
+        leads = load_sendable_leads(source_file)
+
+        if not mailboxes:
+            print("No configured mailboxes.")
+            return
+
+        if leads.empty:
+            print("No verified leads ready to send.")
+            return
+
+        sent_emails = []
+        mailbox_pointer = 0
+
+        print("\nAurum OS Outreach Engine Started\n")
+
+        for _, row in leads.iterrows():
+            lead = row.to_dict()
+            mailbox = next_mailbox(mailboxes, counts, mailbox_pointer)
+
+            if mailbox is None:
+                print("All new-email mailbox quotas reached.")
+                break
+
+            try:
+                send_smtp_message(lead, mailbox)
+                mailbox_pointer = (mailboxes.index(mailbox) + 1) % len(mailboxes)
+
+                if not DRY_RUN:
+                    increment_quota(counts, mailbox["name"], "new")
+                    append_row(
+                        SENT_LEADS_FILE,
+                        {
+                            "name": lead.get("name", ""),
+                            "company": lead.get("company", ""),
+                            "email": lead.get("email", ""),
+                            "subject_line": lead.get("subject_line", ""),
+                            "mailbox_used": mailbox["name"],
+                            "sent_at": now_iso(),
+                            "status": "sent",
+                        },
+                        SENT_COLUMNS,
+                    )
+                    append_row(
+                        WAITING_FOLLOWUP_FILE,
+                        waiting_row(lead, mailbox),
+                        WAITING_COLUMNS,
+                    )
+                    sent_emails.append(lead.get("email", ""))
+
+                print(f"Sent to {lead.get('email')} using {mailbox['name']}")
+                wait_between_sends()
+
+            except Exception as e:
+                if not DRY_RUN:
+                    append_row(
+                        FAILED_LEADS_FILE,
+                        {
+                            "name": lead.get("name", ""),
+                            "company": lead.get("company", ""),
+                            "email": lead.get("email", ""),
+                            "subject_line": lead.get("subject_line", ""),
+                            "mailbox_used": mailbox["name"],
+                            "failed_at": now_iso(),
+                            "error": str(e),
+                            "status": "failed",
+                        },
+                        FAILED_COLUMNS,
+                    )
+                print(f"FAILED -> {lead.get('email')}: {e}")
+                wait_between_sends()
+
+        if not DRY_RUN:
+            original = read_csv(source_file)
+            remaining = remove_emails(original, sent_emails)
+            atomic_write_dataframe(source_file, remaining)
+            save_daily_counts(counts)
+
+        print("\nDaily sending completed.")
+
+
+if __name__ == "__main__":
+    main()

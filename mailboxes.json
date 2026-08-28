@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Zoho Main",
+    "email_env": "ZOHO_EMAIL",
+    "password_env": "ZOHO_PASSWORD",
+    "smtp": "smtp.zoho.com",
+    "imap": "imap.zoho.com"
+  },
+  {
+    "name": "Infomaniak Main",
+    "email_env": "INFO_EMAIL",
+    "password_env": "INFO_PASSWORD",
+    "smtp": "mail.infomaniak.com",
+    "imap": "mail.infomaniak.com"
+  },
+  {
+    "name": "UIUX",
+    "email_env": "UIUX_EMAIL",
+    "password_env": "UIUX_PASSWORD",
+    "smtp": "smtp.zoho.com",
+    "imap": "imap.zoho.com"
+  },
+  {
+    "name": "Commercials",
+    "email_env": "COMMERCIALS_EMAIL",
+    "password_env": "COMMERCIALS_PASSWORD",
+    "smtp": "smtp.zoho.com",
+    "imap": "imap.zoho.com"
+  },
+  {
+    "name": "Creative",
+    "email_env": "CREATIVE_EMAIL",
+    "password_env": "CREATIVE_PASSWORD",
+    "smtp": "smtp.zoho.com",
+    "imap": "imap.zoho.com"
+  }
+]
